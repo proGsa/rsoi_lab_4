@@ -38,34 +38,7 @@ step() {
   [[ $((step % 2)) -eq 0 ]] && replicas=1 || replicas=0
 
   echo "=== Step ${step}: scale ${deployment} to ${replicas} ==="
-  echo "=== Kubeconfig ==="
-  echo "KUBECONFIG=${KUBECONFIG:-not set}"
-  echo "HOME=$HOME"
-
-  echo "=== cloudlogin path ==="
-  command -v cloudlogin || true
-
-  echo "=== Credential variables ==="
-  if [[ -n "${CLOUDRU_KEY_ID:-}" ]]; then
-    echo "CLOUDRU_KEY_ID is set"
-  else
-    echo "CLOUDRU_KEY_ID is EMPTY"
-  fi
-
-  if [[ -n "${CLOUDRU_SECRET_ID:-}" ]]; then
-    echo "CLOUDRU_SECRET_ID is set"
-  else
-    echo "CLOUDRU_SECRET_ID is EMPTY"
-  fi
-
-  echo "=== Current context ==="
-  kubectl config current-context
-
-  echo "=== Deployments in namespace ${namespace} ==="
-  kubectl get deployments -n "$namespace" -o wide
-
-  echo "=== Scale command ==="
-
+  
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
   kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
