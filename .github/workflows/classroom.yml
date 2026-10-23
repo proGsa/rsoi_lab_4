@@ -19,8 +19,8 @@ jobs:
 
       - name: Find test script
         run: |
-          pwd
-          find . -name 'test-sript' -o -name 'test-script'
+          ls -la
+          find . -type f \( -name 'test-sript' -o -name 'test-script' \)
 
       - name: Install dependencies
         env:
