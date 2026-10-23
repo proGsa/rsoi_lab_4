@@ -115,21 +115,39 @@ jobs:
         run: |
           helm upgrade --install postgres k8s/postgres \
             -n "$NAMESPACE" --wait --timeout 3m
-      - name: Check PostgreSQL and database tables
+
+      - name: Inspect PostgreSQL
         run: |
-          set -e
+          echo "=== Pods ==="
+          kubectl get pods -n "$NAMESPACE" -o wide
 
-          echo "=== PostgreSQL pods ==="
-          kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=postgres
+          echo "=== PostgreSQL deployment ==="
+          kubectl get deployment postgres -n "$NAMESPACE" -o yaml
 
-          echo "=== PostgreSQL logs ==="
-          kubectl logs deployment/postgres -n "$NAMESPACE" --tail=100
-
-          echo "=== Check databases and tables ==="
+          echo "=== PostgreSQL pod labels ==="
+          kubectl get pods -n "$NAMESPACE" --show-labels
+      - name: Check database data
+        run: |
           for db in libraries reservations ratings; do
-            echo "--- Database: $db ---"
-            kubectl exec -n "$NAMESPACE" deployment/postgres -- \
-              psql -U program -d "$db" -c '\dt'
+            echo "=== Database: $db ==="
+
+            case "$db" in
+              libraries)
+                tables="library books library_books"
+                ;;
+              reservations)
+                tables="reservation"
+                ;;
+              ratings)
+                tables="rating"
+                ;;
+            esac
+
+            for table in $tables; do
+              echo "--- $table ---"
+              kubectl exec -n "$NAMESPACE" deployment/postgres -- \
+                psql -U program -d "$db" -c "SELECT COUNT(*) FROM $table;"
+            done
           done
 
       # - name: Deploy services
