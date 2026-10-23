@@ -40,8 +40,10 @@ step() {
 
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
-  kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
-  
+  if [[ "$replicas" -eq 1 ]]; then
+    kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
+  fi
+
   newman run \
     --delay-request=100 \
     --folder=step"$step" \
