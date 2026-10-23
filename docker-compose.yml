@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: library/postgres:13
+    container_name: postgres
+    restart: on-failure
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./postgres/:/docker-entrypoint-initdb.d/
+    ports:
+      - "5432:5432"
+
+  library-service:
+    image: progsa/library-service:latest
+    build: ./v4/library_service
+    container_name: library-service
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql+psycopg2://program:test@postgres:5432/libraries
+    ports:
+      - "8060:8060"
+    depends_on:
+      - postgres
+  
+  reservation-service:
+    image: progsa/reservation-service:latest
+    build: ./v4/reservation_service
+    container_name: reservation-service
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql+psycopg2://program:test@postgres:5432/reservations
+    ports:
+      - "8070:8070"
+    depends_on:
+      - postgres
+
+  rating-service:
+    image: progsa/rating-service:latest
+    build: ./v4/rating_service
+    container_name: rating-service
+    restart: on-failure
+    environment:
+      DATABASE_URL: postgresql+psycopg2://program:test@postgres:5432/ratings
+    ports:
+      - "8050:8050"
+    depends_on:
+      - postgres
+
+  gateway-service:
+    image: progsa/gateway-service:latest
+    build: ./v4/gateway_service
+    container_name: gateway-service
+    ports:
+      - "8080:8080"
+    environment:
+      LIBRARY_SERVICE_URL: http://library-service:8060
+      RESERVATION_SERVICE_URL: http://reservation-service:8070
+      RATING_SERVICE_URL: http://rating-service:8050
+    depends_on:
+      - library-service
+      - reservation-service
+      - rating-service
+volumes:
+  db-data:

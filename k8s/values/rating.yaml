@@ -1,0 +1,15 @@
+
+replicaCount: 1
+
+image:
+  repository: progsa/rating-service
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8050
+  targetPort: 8050
+
+env:
+  DATABASE_URL: "postgresql+psycopg2://program:test@postgres:5432/ratings"

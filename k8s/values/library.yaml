@@ -1,0 +1,15 @@
+
+replicaCount: 1
+
+image:
+  repository: progsa/library-service
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8060
+  targetPort: 8060
+
+env:
+  DATABASE_URL: "postgresql+psycopg2://program:test@postgres:5432/libraries"

@@ -1,0 +1,17 @@
+
+image:
+  repository: postgres
+  tag: "13"
+  pullPolicy: IfNotPresent
+
+database:
+  name: postgres
+  user: postgres
+  password: postgres
+
+storage:
+  size: 5Gi
+  accessMode: ReadWriteOnce
+
+service:
+  port: 5432

@@ -1,0 +1,15 @@
+
+replicaCount: 1
+
+image:
+  repository: progsa/reservation-service
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8070
+  targetPort: 8070
+
+env:
+  DATABASE_URL: "postgresql+psycopg2://program:test@postgres:5432/reservations"

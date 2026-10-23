@@ -1,0 +1,17 @@
+
+replicaCount: 1
+
+image:
+  repository: progsa/gateway-service
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+env:
+  LIBRARY_SERVICE_URL: "http://library:8060"
+  RATING_SERVICE_URL: "http://rating:8050"
+  RESERVATION_SERVICE_URL: "http://reservation:8070"

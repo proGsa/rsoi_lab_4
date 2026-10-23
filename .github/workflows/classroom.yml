@@ -17,17 +17,129 @@ jobs:
 
       - uses: docker/setup-buildx-action@v2
 
-      # TODO build and run unit tests
+      - name: Install dependencies
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r v4/library_service/requirements.txt
+          pip install -r v4/reservation_service/requirements.txt
+          pip install -r v4/rating_service/requirements.txt
+          pip install -r v4/gateway_service/requirements.txt
+          pip install pytest
 
-      - name: Build images
-        timeout-minutes: 10
+      - name: Run unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest v4/library_service/tests
+          pytest v4/reservation_service/tests
+          pytest v4/rating_service/tests
+
+      - name: Login to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push images
+        if: github.event_name == 'push'
+        timeout-minutes: 20
         run: docker compose build --push
 
-      # TODO deploy to k8s with liveness and readyness probes
 
-      - name: Wait before services are ready
-        run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
+  deploy-and-newman:
+    name: Deploy and Newman
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      NAMESPACE: test
+      VARIANT: v4
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-kubectl@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.0
+
+      - name: Install Cloud.ru cloudlogin
+        run: |
+          curl -fsSLO \
+            https://github.com/cloud-ru-tech/cloudlogin/releases/latest/download/cloudlogin_Linux_amd64.tar.gz
+          tar -xzf cloudlogin_Linux_amd64.tar.gz
+          sudo install -m 0755 cloudlogin /usr/local/bin/cloudlogin
+
+      - name: Configure Kubernetes
+        env:
+          KUBECONFIG_RAW: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBECONFIG_RAW" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+          echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
+          kubectl cluster-info
+
+      - name: Create test namespace
+        run: kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy PostgreSQL
+        run: |
+          helm upgrade --install postgres k8s/postgres \
+            -n "$NAMESPACE" --wait --timeout 3m
+
+      - name: Deploy services
+        timeout-minutes: 15
+        run: |
+          for service in library rating reservation gateway; do
+            helm upgrade --install "$service" k8s/service \
+              -n "$NAMESPACE" \
+              -f "k8s/values/$service.yaml" \
+              --set image.tag="$IMAGE_TAG" \
+              --wait --timeout 5m
+          done
+      - name: Wait for services
+        run: |
+          for service in library rating reservation gateway; do
+            kubectl rollout status deployment/"$service" \
+              -n "$NAMESPACE" --timeout=180s
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Forward gateway port
+        run: |
+          kubectl port-forward svc/gateway 8080:8080 \
+            -n "$NAMESPACE" > /tmp/port-forward.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/manage/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/port-forward.log
+          exit 1
+
+      - name: Run Newman fault-tolerance scenario
+        run: |
+          chmod +x ./test-sript
+          ./test-sript v4 library test
+
+      # - name: Wait before services are ready
+      #   run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
       
+      # - name: Install newman
+      #   run: npm install -g newman
       # TODO setup parameters in classroom/autograding.json
       
       - name: Autograding
