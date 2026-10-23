@@ -40,8 +40,37 @@ step() {
 
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
+  kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
+  
   if [[ "$replicas" -eq 1 ]]; then
-    kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
+    kubectl rollout status deployment/"$deployment" \
+      -n "$namespace" --timeout=120s
+
+    # Ждём появления готового endpoint
+    echo "=== Waiting for $deployment endpoint ==="
+    for i in $(seq 1 30); do
+      ENDPOINTS=$(kubectl get endpoints "$deployment" \
+        -n "$namespace" \
+        -o jsonpath='{.subsets[*].addresses[*].ip}')
+
+      if [[ -n "$ENDPOINTS" ]]; then
+        echo "Endpoint is ready: $ENDPOINTS"
+        break
+      fi
+
+      echo "Waiting for endpoint... ($i/30)"
+      sleep 2
+    done
+
+    if [[ -z "$ENDPOINTS" ]]; then
+      echo "ERROR: $deployment endpoint did not become ready"
+      kubectl get pods -n "$namespace" -o wide
+      kubectl describe deployment "$deployment" -n "$namespace"
+      exit 1
+    fi
+
+    # Даём приложению время начать обрабатывать запросы
+    sleep 5
   fi
 
   newman run \
