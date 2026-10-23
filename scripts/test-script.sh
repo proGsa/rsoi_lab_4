@@ -40,22 +40,29 @@ step() {
   echo "=== Step ${step}: scale ${deployment} to ${replicas} ==="
   echo "=== Kubeconfig ==="
   echo "KUBECONFIG=${KUBECONFIG:-not set}"
+  echo "HOME=$HOME"
+
+  echo "=== cloudlogin path ==="
+  command -v cloudlogin || true
+
+  echo "=== Credential variables ==="
+  if [[ -n "${CLOUDRU_KEY_ID:-}" ]]; then
+    echo "CLOUDRU_KEY_ID is set"
+  else
+    echo "CLOUDRU_KEY_ID is EMPTY"
+  fi
+
+  if [[ -n "${CLOUDRU_SECRET_ID:-}" ]]; then
+    echo "CLOUDRU_SECRET_ID is set"
+  else
+    echo "CLOUDRU_SECRET_ID is EMPTY"
+  fi
 
   echo "=== Current context ==="
   kubectl config current-context
 
   echo "=== Deployments in namespace ${namespace} ==="
   kubectl get deployments -n "$namespace" -o wide
-
-  echo "=== cloudlogin path ==="
-  command -v cloudlogin
-
-  echo "=== Credential variables ==="
-  test -n "$CLOUDRU_KEY_ID" && echo "CLOUDRU_KEY_ID is set" \
-    || echo "CLOUDRU_KEY_ID is EMPTY"
-
-  test -n "$CLOUDRU_SECRET_ID" && echo "CLOUDRU_SECRET_ID is set" \
-    || echo "CLOUDRU_SECRET_ID is EMPTY"
 
   echo "=== Scale command ==="
 
