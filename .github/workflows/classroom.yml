@@ -45,10 +45,21 @@ jobs:
 
       - name: Build and push images
         if: github.event_name == 'push'
-        timeout-minutes: 20
         env:
           IMAGE_TAG: ${{ github.sha }}
-        run: docker compose build --push
+        run: |
+          docker compose config
+          docker compose build --push
+
+      - name: Verify published images
+        if: github.event_name == 'push'
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          for image in library-service reservation-service rating-service gateway-service; do
+            echo "Checking progsa/$image:$IMAGE_TAG"
+            docker buildx imagetools inspect "progsa/$image:$IMAGE_TAG"
+          done
 
 
   deploy-and-newman:
