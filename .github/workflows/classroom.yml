@@ -17,6 +17,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@v2
 
+      - name: Find test script
+        run: |
+          pwd
+          find . -name 'test-sript' -o -name 'test-script'
+
       - name: Install dependencies
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -172,6 +177,7 @@ jobs:
           done
           cat /tmp/port-forward.log
           exit 1
+
 
       - name: Run Newman fault-tolerance scenario
         run: |
