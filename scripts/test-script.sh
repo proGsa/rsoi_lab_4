@@ -37,7 +37,7 @@ step() {
   local replicas
   [[ $((step % 2)) -eq 0 ]] && replicas=1 || replicas=0
 
-  echo "=== Step ${step_number}: scale ${deployment} to ${replicas} ==="
+  echo "=== Step ${step}: scale ${deployment} to ${replicas} ==="
   echo "DEBUG: deployment='${deployment}'"
   echo "DEBUG: namespace='${namespace}'"
   echo "DEBUG: replicas='${replicas}'"
