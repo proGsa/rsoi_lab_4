@@ -191,6 +191,13 @@ jobs:
           echo "=== Rating Service ==="
           kubectl get service rating -n test
 
+          echo "=== Reservation logs ==="
+          kubectl logs deployment/reservation -n "$NAMESPACE" --tail=100
+
+          echo "=== Gateway environment ==="
+          kubectl exec deployment/gateway -n "$NAMESPACE" -- \
+            printenv | grep -E 'RATING_SERVICE_URL|RESERVATION_SERVICE_URL|LIBRARY_SERVICE_URL'
+
           echo "=== Gateway logs ==="
           kubectl logs deployment/gateway -n test --tail=50
 
