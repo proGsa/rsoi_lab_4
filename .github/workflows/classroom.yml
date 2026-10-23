@@ -48,8 +48,10 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -e
           docker compose config
-          docker compose build --push
+          docker compose build
+          docker compose push
 
       - name: Verify published images
         if: github.event_name == 'push'
