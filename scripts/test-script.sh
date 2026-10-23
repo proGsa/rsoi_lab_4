@@ -6,6 +6,12 @@ variant=${1:-${VARIANT}}
 deployment=${2:-${DEPLOYMENT_NAME}}
 namespace=${3:-${NAMESPACE}}
 
+echo "DEBUG: variant='$variant'"
+echo "DEBUG: deployment='$deployment'"
+echo "DEBUG: namespace='$namespace'"
+
+kubectl get deployments -n "$namespace"
+
 [[ -z $namespace ]] && namespace="default"
 
 path=$(dirname "$0")
@@ -41,7 +47,7 @@ step() {
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
   kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
-  
+
   if [[ "$replicas" -eq 1 ]]; then
     kubectl rollout status deployment/"$deployment" \
       -n "$namespace" --timeout=120s
