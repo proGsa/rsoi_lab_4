@@ -46,6 +46,8 @@ jobs:
       - name: Build and push images
         if: github.event_name == 'push'
         timeout-minutes: 20
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: docker compose build --push
 
 

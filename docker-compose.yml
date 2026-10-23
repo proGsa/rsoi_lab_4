@@ -14,7 +14,7 @@ services:
       - "5432:5432"
 
   library-service:
-    image: progsa/library-service:latest
+    image: progsa/library-service:${IMAGE_TAG:-latest}
     build: ./v4/library_service
     container_name: library-service
     restart: on-failure
@@ -26,7 +26,7 @@ services:
       - postgres
   
   reservation-service:
-    image: progsa/reservation-service:latest
+    image: progsa/reservation-service:${IMAGE_TAG:-latest}
     build: ./v4/reservation_service
     container_name: reservation-service
     restart: on-failure
@@ -38,7 +38,7 @@ services:
       - postgres
 
   rating-service:
-    image: progsa/rating-service:latest
+    image: progsa/rating-service:${IMAGE_TAG:-latest}
     build: ./v4/rating_service
     container_name: rating-service
     restart: on-failure
@@ -50,7 +50,7 @@ services:
       - postgres
 
   gateway-service:
-    image: progsa/gateway-service:latest
+    image: progsa/gateway-service:${IMAGE_TAG:-latest}
     build: ./v4/gateway_service
     container_name: gateway-service
     ports:
