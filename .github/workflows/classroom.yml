@@ -59,6 +59,8 @@ jobs:
       IMAGE_TAG: ${{ github.sha }}
       NAMESPACE: test
       VARIANT: v4
+      CLOUDRU_KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+      CLOUDRU_SECRET_ID: ${{ secrets.CLOUDRU_SECRET_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,23 +70,29 @@ jobs:
         with:
           version: v4.3.0
 
-      - name: Install Cloud.ru cloudlogin
+      - name: Install cloudlogin
         run: |
           curl -fsSLO \
             https://github.com/cloud-ru-tech/cloudlogin/releases/latest/download/cloudlogin_Linux_amd64.tar.gz
           tar -xzf cloudlogin_Linux_amd64.tar.gz
           sudo install -m 0755 cloudlogin /usr/local/bin/cloudlogin
+          cloudlogin help
 
       - name: Configure Kubernetes
         env:
           KUBECONFIG_RAW: ${{ secrets.KUBECONFIG }}
         run: |
+          set -e
           mkdir -p "$HOME/.kube"
-          printf '%s' "$KUBECONFIG_RAW" > "$HOME/.kube/config"
+          printf '%s\n' "$KUBECONFIG_RAW" > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-          echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
-          kubectl cluster-info
+          export KUBECONFIG="$HOME/.kube/config"
 
+          kubectl config current-context
+          kubectl cluster-info
+          kubectl get nodes
+          echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
+          
       - name: Create test namespace
         run: kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
 
