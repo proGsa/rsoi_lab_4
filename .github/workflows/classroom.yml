@@ -145,97 +145,116 @@ jobs:
             psql -U program -d ratings -c \
             "SELECT * FROM rating;"
 
-      # - name: Deploy services
-      #   timeout-minutes: 20
-      #   run: |
-      #     for service in library rating reservation gateway; do
-      #       echo "=== Deploying $service ==="
+      - name: Deploy services
+        timeout-minutes: 20
+        run: |
+          for service in library rating reservation gateway; do
+            echo "=== Deploying $service ==="
 
-      #       if ! helm upgrade --install "$service" k8s/service \
-      #         -n "$NAMESPACE" \
-      #         -f "k8s/values/$service.yaml" \
-      #         --set image.tag="$IMAGE_TAG" \
-      #         --wait --timeout 5m; then
+            if ! helm upgrade --install "$service" k8s/service \
+              -n "$NAMESPACE" \
+              -f "k8s/values/$service.yaml" \
+              --set image.tag="$IMAGE_TAG" \
+              --wait --timeout 5m; then
 
-      #         echo "=== Pods ==="
-      #         kubectl get pods -n "$NAMESPACE" -o wide
+              echo "=== Pods ==="
+              kubectl get pods -n "$NAMESPACE" -o wide
 
-      #         echo "=== Deployments ==="
-      #         kubectl get deployments -n "$NAMESPACE"
+              echo "=== Deployments ==="
+              kubectl get deployments -n "$NAMESPACE"
 
-      #         echo "=== Recent events ==="
-      #         kubectl get events -n "$NAMESPACE" \
-      #           --sort-by=.metadata.creationTimestamp
+              echo "=== Recent events ==="
+              kubectl get events -n "$NAMESPACE" \
+                --sort-by=.metadata.creationTimestamp
 
-      #         echo "=== Library pod description ==="
-      #         kubectl describe pods -n "$NAMESPACE" \
-      #           -l app.kubernetes.io/name=library
+              echo "=== Library pod description ==="
+              kubectl describe pods -n "$NAMESPACE" \
+                -l app.kubernetes.io/name=library
 
-      #         exit 1
-      #       fi
-      #     done
+              exit 1
+            fi
+          done
           
-      # - name: Wait for services
-      #   run: |
-      #     for service in library rating reservation gateway; do
-      #       kubectl rollout status deployment/"$service" \
-      #         -n "$NAMESPACE" --timeout=180s
-      #     done
+      - name: Wait for services
+        run: |
+          for service in library rating reservation gateway; do
+            kubectl rollout status deployment/"$service" \
+              -n "$NAMESPACE" --timeout=180s
+          done
 
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: 22
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      # - name: Install Newman
+      - name: Install Newman
+        run: npm install -g newman
+
+      - name: Forward gateway port
+        run: |
+          kubectl port-forward svc/gateway 8080:8080 \
+            -n "$NAMESPACE" > /tmp/port-forward.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/manage/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/port-forward.log
+          exit 1
+
+      - name: Reset test data
+        run: |
+          set -e
+
+          kubectl exec -n "$NAMESPACE" deployment/postgres -- \
+            psql -U program -d libraries -c \
+            "UPDATE library_books SET available_count = 1
+            WHERE library_id = 1 AND book_id = 1;"
+
+          kubectl exec -n "$NAMESPACE" deployment/postgres -- \
+            psql -U program -d reservations -c \
+            "DELETE FROM reservation
+            WHERE username = 'Test Max';"
+
+          kubectl exec -n "$NAMESPACE" deployment/postgres -- \
+            psql -U program -d ratings -c \
+            "UPDATE rating SET stars = 77
+            WHERE username = 'Test Max';"
+            
+      - name: Run Newman fault-tolerance scenario
+        run: |
+          chmod +x ./scripts/test-script.sh
+          ./scripts/test-script.sh v4 rating test
+      
+      - name: Debug Kubernetes after tests
+        if: always()
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n test -o wide
+
+          echo "=== Rating Service endpoints ==="
+          kubectl get endpoints rating -n test
+
+          echo "=== Rating Service ==="
+          kubectl get service rating -n test
+
+          echo "=== Reservation logs ==="
+          kubectl logs deployment/reservation -n "$NAMESPACE" --tail=100
+
+          echo "=== Gateway environment ==="
+          kubectl exec deployment/gateway -n "$NAMESPACE" -- \
+            printenv | grep -E 'RATING_SERVICE_URL|RESERVATION_SERVICE_URL|LIBRARY_SERVICE_URL'
+
+          echo "=== Gateway logs ==="
+          kubectl logs deployment/gateway -n test --tail=50
+
+      # - name: Wait before services are ready
+      #   run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
+      
+      # - name: Install newman
       #   run: npm install -g newman
-
-      # - name: Forward gateway port
-      #   run: |
-      #     kubectl port-forward svc/gateway 8080:8080 \
-      #       -n "$NAMESPACE" > /tmp/port-forward.log 2>&1 &
-      #     for i in $(seq 1 30); do
-      #       if curl -fsS http://127.0.0.1:8080/manage/health; then
-      #         exit 0
-      #       fi
-      #       sleep 2
-      #     done
-      #     cat /tmp/port-forward.log
-      #     exit 1
-
-      # - name: Run Newman fault-tolerance scenario
-      #   run: |
-      #     chmod +x ./scripts/test-script.sh
-      #     ./scripts/test-script.sh v4 rating test
+      # TODO setup parameters in classroom/autograding.json
       
-      # - name: Debug Kubernetes after tests
-      #   if: always()
-      #   run: |
-      #     echo "=== Pods ==="
-      #     kubectl get pods -n test -o wide
-
-      #     echo "=== Rating Service endpoints ==="
-      #     kubectl get endpoints rating -n test
-
-      #     echo "=== Rating Service ==="
-      #     kubectl get service rating -n test
-
-      #     echo "=== Reservation logs ==="
-      #     kubectl logs deployment/reservation -n "$NAMESPACE" --tail=100
-
-      #     echo "=== Gateway environment ==="
-      #     kubectl exec deployment/gateway -n "$NAMESPACE" -- \
-      #       printenv | grep -E 'RATING_SERVICE_URL|RESERVATION_SERVICE_URL|LIBRARY_SERVICE_URL'
-
-      #     echo "=== Gateway logs ==="
-      #     kubectl logs deployment/gateway -n test --tail=50
-
-      # # - name: Wait before services are ready
-      # #   run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
-      
-      # # - name: Install newman
-      # #   run: npm install -g newman
-      # # TODO setup parameters in classroom/autograding.json
-      
-      # - name: Autograding
-      #   uses: education/autograding@v1
-      #   continue-on-error: true
+      - name: Autograding
+        uses: education/autograding@v1
+        continue-on-error: true
