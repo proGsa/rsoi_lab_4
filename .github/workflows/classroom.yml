@@ -102,13 +102,41 @@ jobs:
       - name: Configure Kubernetes
         env:
           KUBECONFIG_RAW: ${{ secrets.KUBECONFIG }}
+          CLOUDRU_KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
+          CLOUDRU_SECRET_ID: ${{ secrets.CLOUDRU_SECRET_ID }}
         run: |
-          set -e
           mkdir -p "$HOME/.kube"
           printf '%s\n' "$KUBECONFIG_RAW" > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-          export KUBECONFIG="$HOME/.kube/config"
 
+          ruby -ryaml -e '
+            path = ENV.fetch("HOME") + "/.kube/config"
+            config = YAML.load_file(path)
+
+            config.fetch("users").each do |entry|
+              exec = entry.dig("user", "exec")
+              next unless exec && exec["command"] == "cloudlogin"
+
+              exec["env"] ||= []
+              %w[CLOUDRU_KEY_ID CLOUDRU_SECRET_ID].each do |name|
+                exec["env"].reject! { |item| item["name"] == name }
+              end
+
+              exec["env"] << {
+                "name" => "CLOUDRU_KEY_ID",
+                "value" => ENV.fetch("CLOUDRU_KEY_ID")
+              }
+              exec["env"] << {
+                "name" => "CLOUDRU_SECRET_ID",
+                "value" => ENV.fetch("CLOUDRU_SECRET_ID")
+              }
+            end
+
+            File.write(path, config.to_yaml)
+          '
+
+          chmod 600 "$HOME/.kube/config"
+          export KUBECONFIG="$HOME/.kube/config"
           kubectl config current-context
           kubectl cluster-info
           kubectl get nodes
