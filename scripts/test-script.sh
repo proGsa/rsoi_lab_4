@@ -33,18 +33,14 @@ success() {
 }
 
 step() {
-  echo "DEBUG: step=$step"
-  echo "DEBUG: deployment='$deployment'"
-  echo "DEBUG: namespace='$namespace'"
-  echo "DEBUG: replicas='$replicas'"
-  echo "DEBUG: command: kubectl scale deployment '$deployment' -n '$namespace' --replicas '$replicas'"
-
-  kubectl get deployments -n "$namespace"
-  kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas"
   local step=$1
+  local replicas
   [[ $((step % 2)) -eq 0 ]] && replicas=1 || replicas=0
 
-  printf "=== Step %d: scale %s to %s ===\n" "$step" "$deployment" "$replicas"
+  echo "=== Step ${step_number}: scale ${deployment} to ${replicas} ==="
+  echo "DEBUG: deployment='${deployment}'"
+  echo "DEBUG: namespace='${namespace}'"
+  echo "DEBUG: replicas='${replicas}'"
 
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
