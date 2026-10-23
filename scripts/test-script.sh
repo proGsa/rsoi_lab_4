@@ -6,12 +6,6 @@ variant=${1:-${VARIANT}}
 deployment=${2:-${DEPLOYMENT_NAME}}
 namespace=${3:-${NAMESPACE}}
 
-echo "DEBUG: variant='$variant'"
-echo "DEBUG: deployment='$deployment'"
-echo "DEBUG: namespace='$namespace'"
-
-kubectl get deployments -n "$namespace"
-
 [[ -z $namespace ]] && namespace="default"
 
 path=$(dirname "$0")
