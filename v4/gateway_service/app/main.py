@@ -269,12 +269,6 @@ def create_reservation(body: ReservationRequest, x_user_name: str = Header(..., 
         raise HTTPException(status_code=503, detail="Library Service is unavailable")
     
     if books_response.status_code != 200:
-        print(
-            "Library books error:",
-            books_response.status_code,
-            books_response.text,
-            flush=True,
-        )
         raise HTTPException(status_code=books_response.status_code, detail="Unable to get library books")
 
     books = books_response.json()
@@ -296,12 +290,6 @@ def create_reservation(body: ReservationRequest, x_user_name: str = Header(..., 
         raise HTTPException(status_code=503, detail="Library Service is unavailable")
 
     if take_response.status_code != 200:
-        print(
-            "Library take error:",
-            take_response.status_code,
-            take_response.text,
-            flush=True,
-        )
         raise HTTPException(status_code=take_response.status_code, detail="Unable to take book")
 
     try:
@@ -310,12 +298,6 @@ def create_reservation(body: ReservationRequest, x_user_name: str = Header(..., 
             headers=headers,
             json=body.model_dump(mode="json"),
             timeout=5.0,
-        )
-        print(
-            "Reservation creation response:",
-            reservation_response.status_code,
-            reservation_response.text,
-            flush=True,
         )
     except httpx.RequestError:
         raise HTTPException(status_code=503, detail="Reservation Service is unavailable")
