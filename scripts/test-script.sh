@@ -47,8 +47,18 @@ step() {
   echo "=== Deployments in namespace ${namespace} ==="
   kubectl get deployments -n "$namespace" -o wide
 
+  echo "=== cloudlogin path ==="
+  command -v cloudlogin
+
+  echo "=== Credential variables ==="
+  test -n "$CLOUDRU_KEY_ID" && echo "CLOUDRU_KEY_ID is set" \
+    || echo "CLOUDRU_KEY_ID is EMPTY"
+
+  test -n "$CLOUDRU_SECRET_ID" && echo "CLOUDRU_SECRET_ID is set" \
+    || echo "CLOUDRU_SECRET_ID is EMPTY"
+
   echo "=== Scale command ==="
-  
+
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
   kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
