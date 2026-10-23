@@ -92,7 +92,7 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
           echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
-          
+
       - name: Create test namespace
         run: kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
 
@@ -102,15 +102,35 @@ jobs:
             -n "$NAMESPACE" --wait --timeout 3m
 
       - name: Deploy services
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           for service in library rating reservation gateway; do
-            helm upgrade --install "$service" k8s/service \
+            echo "=== Deploying $service ==="
+
+            if ! helm upgrade --install "$service" k8s/service \
               -n "$NAMESPACE" \
               -f "k8s/values/$service.yaml" \
               --set image.tag="$IMAGE_TAG" \
-              --wait --timeout 5m
+              --wait --timeout 5m; then
+
+              echo "=== Pods ==="
+              kubectl get pods -n "$NAMESPACE" -o wide
+
+              echo "=== Deployments ==="
+              kubectl get deployments -n "$NAMESPACE"
+
+              echo "=== Recent events ==="
+              kubectl get events -n "$NAMESPACE" \
+                --sort-by=.metadata.creationTimestamp
+
+              echo "=== Library pod description ==="
+              kubectl describe pods -n "$NAMESPACE" \
+                -l app.kubernetes.io/name=library
+
+              exit 1
+            fi
           done
+          
       - name: Wait for services
         run: |
           for service in library rating reservation gateway; do
