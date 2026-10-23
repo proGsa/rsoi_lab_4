@@ -61,6 +61,3 @@ Kubernetes Cluster, т.е. готовый кластер k8s, предостав
 ### Варианты заданий
 
 Распределение вариантов заданий аналогично [ЛР #2](https://github.com/bmstu-rsoi/lab2-template).
-
-key_id=df8e4190d5b23989dfec9382359b9042
-key_secret=f7780689d9b4256035ee49e87558f793
