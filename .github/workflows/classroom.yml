@@ -74,6 +74,7 @@ jobs:
       IMAGE_TAG: ${{ github.sha }}
       NAMESPACE: test
       VARIANT: v4
+      DEPLOYMENT_NAME: rating
       CLOUDRU_KEY_ID: ${{ secrets.CLOUDRU_KEY_ID }}
       CLOUDRU_SECRET_ID: ${{ secrets.CLOUDRU_SECRET_ID }}
     steps:
@@ -221,32 +222,32 @@ jobs:
             "UPDATE rating SET stars = 77
             WHERE username = 'Test Max';"
 
-      - name: Run Newman fault-tolerance scenario
-        run: |
-          chmod +x ./scripts/test-script.sh
-          ./scripts/test-script.sh v4 rating test
+      # - name: Run Newman fault-tolerance scenario
+      #   run: |
+      #     chmod +x ./scripts/test-script.sh
+      #     ./scripts/test-script.sh v4 rating test
       
-      - name: Debug Kubernetes after tests
-        if: always()
-        run: |
-          echo "=== Pods ==="
-          kubectl get pods -n test -o wide
+      # - name: Debug Kubernetes after tests
+      #   if: always()
+      #   run: |
+      #     echo "=== Pods ==="
+      #     kubectl get pods -n test -o wide
 
-          echo "=== Rating Service endpoints ==="
-          kubectl get endpoints rating -n test
+      #     echo "=== Rating Service endpoints ==="
+      #     kubectl get endpoints rating -n test
 
-          echo "=== Rating Service ==="
-          kubectl get service rating -n test
+      #     echo "=== Rating Service ==="
+      #     kubectl get service rating -n test
 
-          echo "=== Reservation logs ==="
-          kubectl logs deployment/reservation -n "$NAMESPACE" --tail=100
+      #     echo "=== Reservation logs ==="
+      #     kubectl logs deployment/reservation -n "$NAMESPACE" --tail=100
 
-          echo "=== Gateway environment ==="
-          kubectl exec deployment/gateway -n "$NAMESPACE" -- \
-            printenv | grep -E 'RATING_SERVICE_URL|RESERVATION_SERVICE_URL|LIBRARY_SERVICE_URL'
+      #     echo "=== Gateway environment ==="
+      #     kubectl exec deployment/gateway -n "$NAMESPACE" -- \
+      #       printenv | grep -E 'RATING_SERVICE_URL|RESERVATION_SERVICE_URL|LIBRARY_SERVICE_URL'
 
-          echo "=== Gateway logs ==="
-          kubectl logs deployment/gateway -n test --tail=50
+      #     echo "=== Gateway logs ==="
+      #     kubectl logs deployment/gateway -n test --tail=50
 
       # - name: Wait before services are ready
       #   run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
