@@ -69,7 +69,6 @@ jobs:
             docker buildx imagetools inspect "progsa/$image:$IMAGE_TAG"
           done
 
-
   deploy-and-newman:
     name: Deploy and Newman
     needs: build
@@ -114,6 +113,15 @@ jobs:
           kubectl cluster-info
           kubectl get nodes
           echo "KUBECONFIG=$HOME/.kube/config" >> "$GITHUB_ENV"
+          
+      - name: Check Cloud.ru authentication
+        run: |
+          set -e
+          echo "Checking cloudlogin..."
+          cloudlogin get-token > /dev/null
+          echo "Cloud.ru authentication successful"
+          kubectl cluster-info
+          kubectl get nodes
 
       - name: Create test namespace
         run: kubectl create namespace test --dry-run=client -o yaml | kubectl apply -f -
