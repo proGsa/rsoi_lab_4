@@ -31,7 +31,7 @@ def to_date(value: str | date) -> date:
 def health():
     return {"status": "UP"}
 
-def proxy_request(method: str, url: str, params: dict | None = None, headers: dict | None = None, json: dict | None = None):
+def proxy_request(method: str, url: str, params: dict | None = None, headers: dict | None = None, json: dict | None = None, error_message: str = "Upstream service is unavailable",):
     try:
         response = httpx.request(
             method=method,
@@ -42,7 +42,7 @@ def proxy_request(method: str, url: str, params: dict | None = None, headers: di
             timeout=5.0,
         )
     except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="Upstream service is unavailable")
+       return JSONResponse(status_code=503, content={"message": error_message})
 
     return Response(
         content=response.content,
