@@ -38,10 +38,17 @@ step() {
   [[ $((step % 2)) -eq 0 ]] && replicas=1 || replicas=0
 
   echo "=== Step ${step}: scale ${deployment} to ${replicas} ==="
-  echo "DEBUG: deployment='${deployment}'"
-  echo "DEBUG: namespace='${namespace}'"
-  echo "DEBUG: replicas='${replicas}'"
+  echo "=== Kubeconfig ==="
+  echo "KUBECONFIG=${KUBECONFIG:-not set}"
 
+  echo "=== Current context ==="
+  kubectl config current-context
+
+  echo "=== Deployments in namespace ${namespace} ==="
+  kubectl get deployments -n "$namespace" -o wide
+
+  echo "=== Scale command ==="
+  
   kubectl scale deployment "$deployment" -n "$namespace" --replicas "$replicas" 
   
   kubectl rollout status deployment/"$deployment" -n "$namespace" --timeout=120s
