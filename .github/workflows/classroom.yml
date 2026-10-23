@@ -17,11 +17,6 @@ jobs:
 
       - uses: docker/setup-buildx-action@v2
 
-      - name: Find test script
-        run: |
-          ls -la
-          find . -type f \( -name 'test-sript' -o -name 'test-script' \)
-
       - name: Install dependencies
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -181,8 +176,8 @@ jobs:
 
       - name: Run Newman fault-tolerance scenario
         run: |
-          chmod +x ./scripts/test-sript
-          ./scripts/test-sript v4 rating test
+          chmod +x ./scripts/test-script.sh
+          ./scripts/test-sript.sh v4 rating test
 
       # - name: Wait before services are ready
       #   run: kubectl wait -n test -l app.kubernetes.io/name=gateway pod --for=condition=Ready --timeout 3m
