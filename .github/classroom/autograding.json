@@ -3,7 +3,7 @@
     {
       "name": "Run Test Script",
       "setup": "",
-      "run": "./scripts/test-script.sh v4 rating <k8s namespace>",
+      "run": "./scripts/test-script.sh v4 rating test",
       "input": "",
       "output": "",
       "comparison": "included",
