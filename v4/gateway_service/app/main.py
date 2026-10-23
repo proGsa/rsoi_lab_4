@@ -1,16 +1,23 @@
 import os
+import time
 from uuid import UUID
+from datetime import date
+from collections import deque
+from threading import Thread, Lock
 import httpx
 from fastapi import FastAPI, Response, Query, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from datetime import date
+
 
 app = FastAPI(title="Gateway Service")
 
 LIBRARY_SERVICE_URL = os.getenv("LIBRARY_SERVICE_URL", "http://library-service:8060")
 RESERVATION_SERVICE_URL = os.getenv("RESERVATION_SERVICE_URL", "http://reservation-service:8070")
 RATING_SERVICE_URL = os.getenv("RATING_SERVICE_URL", "http://rating-service:8050")
+
+retry_queue = deque()
+queue_lock = Lock()
 
 class ReservationRequest(BaseModel):
     bookUid: UUID
@@ -31,25 +38,134 @@ def to_date(value: str | date) -> date:
 def health():
     return {"status": "UP"}
 
-def proxy_request(method: str, url: str, params: dict | None = None, headers: dict | None = None, json: dict | None = None, error_message: str = "Upstream service is unavailable",):
+def enqueue(operation: dict):
+    with queue_lock:
+        retry_queue.append(operation)
+
+def send_request(method: str, url: str, headers: dict | None = None, params: dict | None = None, json: dict | None = None, timeout: float = 2.0):
     try:
-        response = httpx.request(
+        return httpx.request(
             method=method,
             url=url,
-            params=params,
             headers=headers,
+            params=params,
             json=json,
-            timeout=5.0,
+            timeout=timeout,
         )
+    except httpx.RequestError:
+        return None
+
+def retry_request(method: str, url: str, headers: dict | None = None, params: dict | None = None, json: dict | None = None, timeout: int = 10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = send_request(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            json=json,
+            timeout=2.0,
+        )
+
+        if response is not None:
+            if response.status_code < 500:
+                return response
+
+        time.sleep(1)
+
+    return None
+
+def update_rating(username: str, delta: int) -> bool:
+    headers = {"X-User-Name": username}
+
+    response = send_request("GET", f"{RATING_SERVICE_URL}/api/v1/rating", headers=headers)
+
+    if response is None or response.status_code != 200:
+        return False
+
+    try:
+        stars = response.json()["stars"]
+    except (ValueError, KeyError, TypeError):
+        return False
+
+    new_stars = max(1, min(100, stars + delta))
+
+    response = send_request(
+        "PATCH",
+        f"{RATING_SERVICE_URL}/api/v1/rating",
+        headers=headers,
+        json={"stars": new_stars},
+    )
+
+    return response is not None and response.status_code in (200, 204)
+
+def process_operation(operation: dict) -> bool:
+    if operation["type"] == "rating":
+        return update_rating(operation["username"], operation["delta"])
+
+    response = send_request(
+        operation["method"],
+        operation["url"],
+        headers=operation.get("headers"),
+        json=operation.get("json"),
+    )
+
+    return response is not None and response.status_code in (200, 204)
+
+def process_pending_for_user(username: str):
+    with queue_lock:
+        pending = [
+            operation for operation in retry_queue
+            if operation.get("username") == username
+        ]
+
+    for operation in pending:
+        if process_operation(operation):
+            with queue_lock:
+                try:
+                    retry_queue.remove(operation)
+                except ValueError:
+                    pass
+
+def queue_worker():
+    while True:
+        with queue_lock:
+            operation = retry_queue[0] if retry_queue else None
+
+        if operation is not None and process_operation(operation):
+            with queue_lock:
+                try:
+                    retry_queue.remove(operation)
+                except ValueError:
+                    pass
+
+        time.sleep(1)
+
+def retry_rating_update(username: str, delta: int, timeout: int = 10) -> bool:
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        if update_rating(username, delta):
+            return True
+
+        time.sleep(1)
+
+    return False
+
+@app.on_event("startup")
+def start_queue_worker():
+    Thread(target=queue_worker, daemon=True).start()
+
+def proxy_request(method: str, url: str, params: dict | None = None, headers: dict | None = None, json: dict | None = None, error_message: str = "Upstream service is unavailable",):
+    try:
+        response = httpx.request(method=method, url=url, params=params, headers=headers, json=json, timeout=5.0)
     except httpx.RequestError:
        return JSONResponse(status_code=503, content={"message": error_message})
 
     return Response(
         content=response.content,
         status_code=response.status_code,
-        headers={
-            "content-type": response.headers.get("content-type", "application/json")
-        },
+        headers={"content-type": response.headers.get("content-type", "application/json")},
     )
 
 def proxy_get(url: str, params: dict | None = None, headers: dict | None = None, error_message: str = "Upstream service is unavailable",):
@@ -198,19 +314,35 @@ def get_reservations(x_user_name: str = Header(..., alias="X-User-Name")):
         library_uid = str(reservation["libraryUid"])
         book_uid = str(reservation["bookUid"])
 
-        if library_uid not in libraries:
-            libraries[library_uid] = get_library_info(library_uid)
-        if (library_uid, book_uid) not in books:
-            books[(library_uid, book_uid)] = get_book_info(library_uid, book_uid)
+        try:
+            if library_uid not in libraries:
+                libraries[library_uid] = get_library_info(library_uid)
 
-        reservations.append(
-            enrich_reservation(
-                reservation,
-                books[(library_uid, book_uid)],
-                libraries[library_uid],
+            if (library_uid, book_uid) not in books:
+                books[(library_uid, book_uid)] = get_book_info(
+                    library_uid, book_uid
+                )
+
+            reservations.append(
+                enrich_reservation(
+                    reservation,
+                    books[(library_uid, book_uid)],
+                    libraries[library_uid],
+                )
             )
-        )
+        except HTTPException as exc:
+            if exc.status_code not in (502, 503, 504):
+                raise
 
+            reservations.append({
+                "reservationUid": str(reservation["reservationUid"]),
+                "status": reservation["status"],
+                "startDate": to_date(reservation["startDate"]).isoformat(),
+                "tillDate": to_date(reservation["tillDate"]).isoformat(),
+                "book": {"bookUid": book_uid},
+                "library": {"libraryUid": library_uid},
+            })
+        
     return JSONResponse(content=reservations, status_code=200)
 
 @app.post("/api/v1/reservations")
@@ -332,17 +464,22 @@ def create_reservation(body: ReservationRequest, x_user_name: str = Header(..., 
 @app.post("/api/v1/reservations/{reservation_uid}/return")
 def return_reservation(reservation_uid: UUID, body: ReturnRequest, x_user_name: str = Header(..., alias="X-User-Name")):
     headers = {"X-User-Name": x_user_name}
-    try:
-        reservation_response = httpx.get(
-            f"{RESERVATION_SERVICE_URL}/api/v1/reservations/{reservation_uid}",
-            headers=headers,
-            timeout=5.0,
-        )
-    except httpx.RequestError:
+
+    reservation_response = send_request(
+        "GET",
+        f"{RESERVATION_SERVICE_URL}/api/v1/reservations/{reservation_uid}",
+        headers=headers,
+        timeout=5.0,
+    )
+
+    if reservation_response is None:
         raise HTTPException(status_code=503, detail="Reservation Service is unavailable")
 
     if reservation_response.status_code != 200:
-        raise HTTPException(status_code=reservation_response.status_code, detail=reservation_response.text)
+        raise HTTPException(
+            status_code=reservation_response.status_code,
+            detail=reservation_response.text,
+        )
 
     reservation = reservation_response.json()
 
@@ -352,94 +489,82 @@ def return_reservation(reservation_uid: UUID, body: ReturnRequest, x_user_name: 
     book_uid = reservation["bookUid"]
     library_uid = reservation["libraryUid"]
 
-    till_date = to_date(reservation["tillDate"])
-    return_date = to_date(body.date)
-    is_late = return_date > till_date
+    books_response = send_request(
+        "GET",
+        f"{LIBRARY_SERVICE_URL}/api/v1/libraries/{library_uid}/books",
+        params={"page": 1, "size": 100, "showAll": True},
+        timeout=5.0,
+    )
 
-    try:
-        books_response = httpx.get(
-            f"{LIBRARY_SERVICE_URL}/api/v1/libraries/{library_uid}/books",
-            params={
-                "page": 1,
-                "size": 100,
-                "showAll": True,
-            },
-            timeout=5.0,
-        )
-    except httpx.RequestError:
+    if books_response is None:
         raise HTTPException(status_code=503, detail="Library Service is unavailable")
 
     if books_response.status_code != 200:
-        raise HTTPException(status_code=books_response.status_code, detail="Unable to get library books")
-
-    books = books_response.json()
+        raise HTTPException(
+            status_code=books_response.status_code,
+            detail="Unable to get library books",
+        )
 
     book = next(
         (
-            book for book in books["items"]
-            if book["bookUid"] == str(book_uid)
+            item
+            for item in books_response.json()["items"]
+            if item["bookUid"] == str(book_uid)
         ),
-        None
+        None,
     )
 
     if book is None:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    original_condition = book["condition"]
-    condition_changed = body.condition != original_condition
-    try:
-        library_response = httpx.post(
-            f"{LIBRARY_SERVICE_URL}/api/v1/libraries/"
-            f"{library_uid}/books/{book_uid}/return",
-            timeout=5.0,
-        )
-    except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="Library Service is unavailable")
+    is_late = to_date(body.date) > to_date(reservation["tillDate"])
+    condition_changed = body.condition != book["condition"]
 
-    if library_response.status_code not in (200, 204):
-        raise HTTPException(status_code=library_response.status_code, detail=library_response.text)
+    delta = -10 if is_late or condition_changed else 1
 
-    try:
-        status_response = httpx.post(
-            f"{RESERVATION_SERVICE_URL}/api/v1/reservations/"
-            f"{reservation_uid}/return",
-            headers=headers,
-            json=body.model_dump(mode="json"),
-            timeout=5.0,
-        )
-    except httpx.RequestError:
+    status_response = send_request(
+        "POST",
+        f"{RESERVATION_SERVICE_URL}/api/v1/reservations/"
+        f"{reservation_uid}/return",
+        headers=headers,
+        json=body.model_dump(mode="json"),
+        timeout=5.0,
+    )
+
+    if status_response is None:
         raise HTTPException(status_code=503, detail="Reservation Service is unavailable")
 
     if status_response.status_code not in (200, 204):
-        raise HTTPException(status_code=status_response.status_code, detail=status_response.text)
-
-    delta = 1
-    if is_late:
-        delta = -10
-    if condition_changed:
-        delta = -10
-        
-    try:
-        rating_response = httpx.get(
-            f"{RATING_SERVICE_URL}/api/v1/rating",
-            headers=headers,
-            timeout=5.0,
+        raise HTTPException(
+            status_code=status_response.status_code,
+            detail=status_response.text,
         )
-        if rating_response.status_code == 200:
-            rating_data = rating_response.json()
-            stars = rating_data["stars"]
-            new_stars = max(1, min(100, stars + delta))
 
-            httpx.patch(
-                f"{RATING_SERVICE_URL}/api/v1/rating",
-                headers=headers,
-                json={"stars": new_stars},
-                timeout=5.0,
-            )
-    except httpx.RequestError:
-        # Возврат книги уже выполнен.
-        # Недоступность рейтинга не должна отменять возврат.
-        pass
+    library_url = (
+        f"{LIBRARY_SERVICE_URL}/api/v1/libraries/"
+        f"{library_uid}/books/{book_uid}/return"
+    )
+
+    library_response = retry_request(
+        "POST",
+        library_url,
+        timeout=10,
+    )
+
+    if library_response is None or library_response.status_code not in (200, 204):
+        enqueue({
+            "type": "request",
+            "username": x_user_name,
+            "method": "POST",
+            "url": library_url,
+        })
+
+    if not retry_rating_update(x_user_name, delta, timeout=10):
+        enqueue({
+            "type": "rating",
+            "username": x_user_name,
+            "delta": delta,
+        })
 
     return Response(status_code=204)
 
@@ -447,6 +572,7 @@ def return_reservation(reservation_uid: UUID, body: ReturnRequest, x_user_name: 
 
 @app.get("/api/v1/rating")
 def get_rating(x_user_name: str = Header(..., alias="X-User-Name"),):
+    process_pending_for_user(x_user_name)
     return proxy_request(
         "GET",
         f"{RATING_SERVICE_URL}/api/v1/rating",
