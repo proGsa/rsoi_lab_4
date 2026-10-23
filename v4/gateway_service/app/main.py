@@ -419,36 +419,27 @@ def return_reservation(reservation_uid: UUID, body: ReturnRequest, x_user_name: 
     if condition_changed:
         delta = -10
         
-
     try:
         rating_response = httpx.get(
             f"{RATING_SERVICE_URL}/api/v1/rating",
             headers=headers,
             timeout=5.0,
         )
+        if rating_response.status_code == 200:
+            rating_data = rating_response.json()
+            stars = rating_data["stars"]
+            new_stars = max(1, min(100, stars + delta))
+
+            httpx.patch(
+                f"{RATING_SERVICE_URL}/api/v1/rating",
+                headers=headers,
+                json={"stars": new_stars},
+                timeout=5.0,
+            )
     except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="Rating Service is unavailable")
-
-    if rating_response.status_code != 200:
-        raise HTTPException(status_code=rating_response.status_code, detail=rating_response.text)
-
-    rating_data = rating_response.json()
-    stars = rating_data["stars"]
-
-    new_stars = max(1, min(100, stars + delta))
-
-    try:
-        update_rating_response = httpx.patch(
-            f"{RATING_SERVICE_URL}/api/v1/rating",
-            headers=headers,
-            json={"stars": new_stars},
-            timeout=5.0,
-        )
-    except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="Rating Service is unavailable")
-
-    if update_rating_response.status_code not in (200, 204):
-        raise HTTPException(status_code=update_rating_response.status_code, detail=update_rating_response.text)
+        # Возврат книги уже выполнен.
+        # Недоступность рейтинга не должна отменять возврат.
+        pass
 
     return Response(status_code=204)
 
