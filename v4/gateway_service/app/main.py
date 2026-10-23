@@ -52,7 +52,7 @@ def proxy_request(method: str, url: str, params: dict | None = None, headers: di
         },
     )
 
-def proxy_get(url: str, params: dict | None = None, headers: dict | None = None):
+def proxy_get(url: str, params: dict | None = None, headers: dict | None = None, error_message: str = "Upstream service is unavailable",):
     try:
         response = httpx.get(
             url,
@@ -61,15 +61,19 @@ def proxy_get(url: str, params: dict | None = None, headers: dict | None = None)
             timeout=5.0,
         )
     except httpx.RequestError:
-        raise HTTPException(
+        return JSONResponse(
             status_code=503,
-            detail="Upstream service is unavailable",
+            content={"message": error_message},
         )
 
     return Response(
         content=response.content,
         status_code=response.status_code,
-        media_type=response.headers.get("content-type"),
+        headers={
+            "content-type": response.headers.get(
+                "content-type", "application/json"
+            )
+        },
     )
 
 
@@ -220,10 +224,10 @@ def create_reservation(body: ReservationRequest, x_user_name: str = Header(..., 
             timeout=5.0,
         )
     except httpx.RequestError:
-        raise HTTPException(status_code=503, detail="Rating Service is unavailable")
+        return JSONResponse(status_code=503, content={"message": "Bonus Service unavailable"},)
 
     if rating_response.status_code != 200:
-        raise HTTPException(status_code=rating_response.status_code, detail=f"Unable to get user rating: {rating_response.text}")
+        return JSONResponse(status_code=rating_response.status_code, content={"message": "Bonus Service unavailable"},)
 
     rating_data = rating_response.json()
     stars = rating_data["stars"]
@@ -456,4 +460,5 @@ def get_rating(x_user_name: str = Header(..., alias="X-User-Name"),):
         "GET",
         f"{RATING_SERVICE_URL}/api/v1/rating",
         headers={"X-User-Name": x_user_name},
+        error_message="Bonus Service unavailable",
     )
